@@ -1,3 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build
+frontend/dist/
+
+# Agent team
 agent_workspaces/
 agent_logs/
-.agent-team-pass-count
+current_tasks/
+task_done/

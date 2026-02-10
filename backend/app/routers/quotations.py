@@ -1,0 +1,129 @@
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.user import User
+from app.models.quotation import Quotation, QuotationStatus
+from app.schemas.quotation import QuotationCreate, QuotationUpdate, QuotationResponse
+from app.auth.dependencies import get_current_user
+
+router = APIRouter()
+
+
+@router.get("", summary="見積一覧")
+def list_quotations(
+    page: int = 1,
+    per_page: int = 20,
+    status: str | None = None,
+    project_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(Quotation)
+    if status:
+        query = query.filter(Quotation.status == status)
+    if project_id is not None:
+        query = query.filter(Quotation.project_id == project_id)
+    total = query.count()
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": (total + per_page - 1) // per_page,
+    }
+
+
+@router.get("/{quotation_id}", response_model=QuotationResponse, summary="見積詳細")
+def get_quotation(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="見積が見つかりません")
+    return quotation
+
+
+@router.post("", response_model=QuotationResponse, status_code=201, summary="見積作成")
+def create_quotation(
+    req: QuotationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    quotation = Quotation(**req.model_dump())
+    db.add(quotation)
+    db.commit()
+    db.refresh(quotation)
+    return quotation
+
+
+@router.put("/{quotation_id}", response_model=QuotationResponse, summary="見積更新")
+def update_quotation(
+    quotation_id: int,
+    req: QuotationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="見積が見つかりません")
+    update_data = req.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(quotation, key, value)
+    db.commit()
+    db.refresh(quotation)
+    return quotation
+
+
+@router.delete("/{quotation_id}", status_code=204, summary="見積削除")
+def delete_quotation(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="見積が見つかりません")
+    db.delete(quotation)
+    db.commit()
+
+
+@router.post("/{quotation_id}/submit", response_model=QuotationResponse, summary="見積提出")
+def submit_quotation(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="見積が見つかりません")
+    if quotation.status != QuotationStatus.draft:
+        raise HTTPException(status_code=400, detail="下書き状態の見積のみ提出できます")
+    quotation.status = QuotationStatus.submitted
+    quotation.submitted_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(quotation)
+    return quotation
+
+
+@router.post("/{quotation_id}/approve", response_model=QuotationResponse, summary="見積承認")
+def approve_quotation(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="見積が見つかりません")
+    if quotation.status != QuotationStatus.submitted:
+        raise HTTPException(status_code=400, detail="提出済みの見積のみ承認できます")
+    quotation.status = QuotationStatus.approved
+    quotation.approved_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(quotation)
+    return quotation
