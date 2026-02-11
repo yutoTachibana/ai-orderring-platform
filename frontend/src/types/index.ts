@@ -32,6 +32,8 @@ export interface Engineer {
   phone: string | null
   company_id: number | null
   company: Company | null
+  employment_type: 'proper' | 'first_tier_proper' | 'freelancer' | 'first_tier_freelancer'
+  subcontracting_tier: number
   hourly_rate: number | null
   monthly_rate: number | null
   availability_status: 'available' | 'assigned' | 'unavailable'
@@ -50,6 +52,7 @@ export interface Project {
   client_company_id: number | null
   client_company: Company | null
   status: 'draft' | 'open' | 'in_progress' | 'completed' | 'closed'
+  subcontracting_tier_limit: 'proper_only' | 'first_tier' | 'second_tier' | 'no_restriction' | null
   start_date: string | null
   end_date: string | null
   budget: number | null

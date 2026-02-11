@@ -14,6 +14,9 @@ from app.routers import (
     orders,
     projects,
     quotations,
+    reconciliation,
+    reports,
+    slack,
 )
 
 app = FastAPI(
@@ -42,6 +45,9 @@ app.include_router(invoices.router, prefix="/api/v1/invoices", tags=["請求"])
 app.include_router(matching.router, prefix="/api/v1/matching", tags=["マッチング"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["処理ジョブ"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["ダッシュボード"])
+app.include_router(reconciliation.router, prefix="/api/v1/reconciliation", tags=["入金消込"])
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["レポート"])
+app.include_router(slack.router, prefix="/api/v1/slack", tags=["Slack連携"])
 
 
 @app.get("/api/health")

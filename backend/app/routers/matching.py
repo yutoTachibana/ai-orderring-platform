@@ -7,12 +7,13 @@ from app.models.project import Project
 from app.models.engineer import Engineer
 from app.models.matching import MatchingResult
 from app.schemas.matching import MatchingRequest, MatchingResultResponse
+from app.services.tier_eligibility import is_engineer_eligible
 from app.auth.dependencies import get_current_user
 
 router = APIRouter()
 
 
-def calculate_match(project: Project, engineer: Engineer) -> tuple[float, float, bool, bool]:
+def calculate_match(project: Project, engineer: Engineer) -> tuple[float, float, bool, bool, bool]:
     """案件とエンジニアのマッチングスコアを計算する。"""
     project_skill_ids = {s.id for s in project.required_skills}
     engineer_skill_ids = {s.id for s in engineer.skills}
@@ -26,8 +27,12 @@ def calculate_match(project: Project, engineer: Engineer) -> tuple[float, float,
         and engineer.monthly_rate <= project.budget
     )
     availability_match = engineer.availability_status.value == "available"
-    score = skill_match_rate * 0.5 + (0.25 if rate_match else 0) + (0.25 if availability_match else 0)
-    return score, skill_match_rate, rate_match, availability_match
+    tier_eligible = is_engineer_eligible(engineer, project)
+    if not tier_eligible:
+        score = 0.0
+    else:
+        score = skill_match_rate * 0.5 + (0.25 if rate_match else 0) + (0.25 if availability_match else 0)
+    return score, skill_match_rate, rate_match, availability_match, tier_eligible
 
 
 @router.post("/run", summary="マッチング実行")
@@ -49,7 +54,7 @@ def run_matching(
 
     results = []
     for engineer in engineers:
-        score, skill_match_rate, rate_match, availability_match = calculate_match(project, engineer)
+        score, skill_match_rate, rate_match, availability_match, tier_eligible = calculate_match(project, engineer)
         result = MatchingResult(
             project_id=project.id,
             engineer_id=engineer.id,
@@ -57,6 +62,7 @@ def run_matching(
             skill_match_rate=skill_match_rate,
             rate_match=rate_match,
             availability_match=availability_match,
+            tier_eligible=tier_eligible,
         )
         db.add(result)
         results.append(result)

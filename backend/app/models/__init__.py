@@ -8,6 +8,7 @@ from app.models.order import Order, OrderStatus
 from app.models.contract import Contract, ContractType, ContractStatus
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.matching import MatchingResult
+from app.models.payment import Payment, PaymentStatus
 from app.models.automation import (
     RoutingRule,
     TargetSystem,
@@ -52,6 +53,9 @@ __all__ = [
     "InvoiceStatus",
     # Matching
     "MatchingResult",
+    # Payment
+    "Payment",
+    "PaymentStatus",
     # Automation
     "RoutingRule",
     "TargetSystem",

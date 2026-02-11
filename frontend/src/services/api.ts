@@ -1,4 +1,5 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -18,6 +19,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       window.location.href = '/login'
+    } else if (error.response?.status === 403) {
+      toast.error(error.response.data?.detail || '権限がありません')
+    } else if (error.response?.status >= 500) {
+      toast.error('サーバーエラーが発生しました')
     }
     return Promise.reject(error)
   },

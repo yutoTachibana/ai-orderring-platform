@@ -61,8 +61,45 @@ class ExcelParser:
                 return f"行{row_idx}: 必須項目 '{field}' が空です"
         return None
 
+    def detect_format(self, file_path: str) -> str:
+        """Excelの形式を自動判定: 'table' (一覧表) or 'key_value' (仕様書)
+
+        1行目に3つ以上の非空セルが連続していればテーブル形式と判定する。
+        """
+        path = Path(file_path)
+        if not path.exists():
+            raise ExcelParseError(f"ファイルが見つかりません: {file_path}")
+
+        wb = load_workbook(str(path), read_only=True, data_only=True)
+        ws = wb.active
+        if ws is None:
+            wb.close()
+            raise ExcelParseError("アクティブなシートが見つかりません")
+
+        # 最初の数行を検査して形式を判定
+        for row in ws.iter_rows(min_row=1, max_row=5, values_only=True):
+            non_empty = sum(1 for v in row if v is not None and str(v).strip())
+            if non_empty >= 3:
+                wb.close()
+                return "table"
+
+        wb.close()
+        return "key_value"
+
+    def smart_parse(self, file_path: str) -> dict | list[dict]:
+        """形式を自動判定して適切なパーサーで処理する。
+
+        Returns:
+            dict: キーバリュー形式（発注仕様書）の場合
+            list[dict]: テーブル形式（発注一覧）の場合
+        """
+        fmt = self.detect_format(file_path)
+        if fmt == "table":
+            return self.parse(file_path)
+        return self.parse_order_excel(file_path)
+
     def parse_order_excel(self, file_path: str) -> dict:
-        """発注仕様書Excel専用のパース処理"""
+        """発注仕様書Excel専用のパース処理 (キーバリュー形式)"""
         path = Path(file_path)
         if not path.exists():
             raise ExcelParseError(f"ファイルが見つかりません: {file_path}")

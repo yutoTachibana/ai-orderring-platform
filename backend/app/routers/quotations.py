@@ -1,13 +1,16 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.models.engineer import Engineer
+from app.models.project import Project
 from app.models.quotation import Quotation, QuotationStatus
 from app.schemas.quotation import QuotationCreate, QuotationUpdate, QuotationResponse
-from app.auth.dependencies import get_current_user
+from app.services.tier_eligibility import validate_engineer_eligibility
+from app.auth.dependencies import get_current_user, require_roles
 
 router = APIRouter()
 
@@ -21,13 +24,16 @@ def list_quotations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Quotation)
+    base_query = db.query(Quotation)
     if status:
-        query = query.filter(Quotation.status == status)
+        base_query = base_query.filter(Quotation.status == status)
     if project_id is not None:
-        query = query.filter(Quotation.project_id == project_id)
-    total = query.count()
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
+        base_query = base_query.filter(Quotation.project_id == project_id)
+    total = base_query.count()
+    items = base_query.options(
+        joinedload(Quotation.project),
+        joinedload(Quotation.engineer),
+    ).offset((page - 1) * per_page).limit(per_page).all()
     return {
         "items": items,
         "total": total,
@@ -55,6 +61,16 @@ def create_quotation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    engineer = db.query(Engineer).filter(Engineer.id == req.engineer_id).first()
+    if not engineer:
+        raise HTTPException(status_code=404, detail="エンジニアが見つかりません")
+    project = db.query(Project).filter(Project.id == req.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="案件が見つかりません")
+    try:
+        validate_engineer_eligibility(engineer, project)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     quotation = Quotation(**req.model_dump())
     db.add(quotation)
     db.commit()
@@ -84,7 +100,7 @@ def update_quotation(
 def delete_quotation(
     quotation_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.admin)),
 ):
     quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not quotation:

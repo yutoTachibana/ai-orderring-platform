@@ -22,6 +22,13 @@ class ProjectStatus(str, enum.Enum):
     closed = "closed"
 
 
+class SubcontractingTierLimit(str, enum.Enum):
+    proper_only = "proper_only"    # プロパーのみ
+    first_tier = "first_tier"      # 一社先まで
+    second_tier = "second_tier"    # 二社先まで
+    no_restriction = "no_restriction"  # 制限なし
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -34,6 +41,9 @@ class Project(Base):
     end_date = mapped_column(Date, nullable=True)
     budget: Mapped[int | None] = mapped_column(Integer, nullable=True)  # JPY
     required_headcount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    subcontracting_tier_limit: Mapped[SubcontractingTierLimit | None] = mapped_column(
+        SAEnum(SubcontractingTierLimit), nullable=True, default=None
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at = mapped_column(DateTime, default=func.now())
     updated_at = mapped_column(DateTime, default=func.now(), onupdate=func.now())

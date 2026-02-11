@@ -3,7 +3,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import {
   LayoutDashboard, Building2, Users, FolderOpen, FileText,
-  ShoppingCart, FileSignature, Receipt, Cpu, Menu, X, LogOut,
+  ShoppingCart, FileSignature, Receipt, Cpu, BarChart3, Landmark, Menu, X, LogOut,
 } from 'lucide-react'
 
 const navItems = [
@@ -16,6 +16,8 @@ const navItems = [
   { to: '/contracts', label: '契約管理', icon: FileSignature },
   { to: '/invoices', label: '請求管理', icon: Receipt },
   { to: '/jobs', label: '処理ジョブ', icon: Cpu },
+  { to: '/reconciliation', label: '入金消込', icon: Landmark },
+  { to: '/reports', label: 'レポート', icon: BarChart3 },
 ]
 
 export default function Layout() {

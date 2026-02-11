@@ -1,4 +1,6 @@
 from celery import Celery
+from celery.schedules import crontab
+
 from app.config import settings
 
 celery = Celery(
@@ -16,6 +18,12 @@ celery.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    beat_schedule={
+        "auto-reconcile-daily": {
+            "task": "workers.auto_reconcile",
+            "schedule": crontab(hour=9, minute=0),
+        },
+    },
 )
 
 celery.autodiscover_tasks(["workers"])

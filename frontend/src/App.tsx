@@ -11,6 +11,8 @@ import OrdersPage from './pages/Orders/OrdersPage'
 import ContractsPage from './pages/Contracts/ContractsPage'
 import InvoicesPage from './pages/Invoices/InvoicesPage'
 import JobsPage from './pages/Jobs/JobsPage'
+import ReconciliationPage from './pages/Reconciliation/ReconciliationPage'
+import ReportsPage from './pages/Reports/ReportsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -35,6 +37,8 @@ export default function App() {
           <Route path="contracts" element={<ContractsPage />} />
           <Route path="invoices" element={<InvoicesPage />} />
           <Route path="jobs" element={<JobsPage />} />
+          <Route path="reconciliation" element={<ReconciliationPage />} />
+          <Route path="reports" element={<ReportsPage />} />
         </Route>
       </Routes>
     </AuthProvider>

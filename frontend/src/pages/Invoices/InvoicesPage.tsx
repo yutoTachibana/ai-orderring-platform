@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import api from '../../services/api'
-import { Invoice } from '../../types'
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Invoice, Contract } from '../../types'
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const statusLabels: Record<string, string> = {
@@ -24,17 +24,68 @@ export default function InvoicesPage() {
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Invoice | null>(null)
   const [form, setForm] = useState({
     contract_id: '', invoice_number: '', billing_month: '', working_hours: '',
     base_amount: '', adjustment_amount: '0', tax_amount: '', status: 'draft', notes: '',
   })
+  const [contractOptions, setContractOptions] = useState<Contract[]>([])
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ file_name: string; extracted: Record<string, unknown> } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImportPdf = async (file: File) => {
+    setImporting(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await api.post('/invoices/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setImportResult(res.data)
+      toast.success('PDF解析完了')
+    } catch {
+      toast.error('PDF解析に失敗しました')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const applyImportResult = () => {
+    if (!importResult?.extracted) return
+    const ext = importResult.extracted as Record<string, unknown>
+    setForm({
+      contract_id: '',
+      invoice_number: (ext.invoice_number as string) || '',
+      billing_month: (ext.billing_month as string)?.substring(0, 7) || '',
+      working_hours: ext.working_hours ? String(ext.working_hours) : '',
+      base_amount: ext.subtotal ? String(ext.subtotal) : '',
+      adjustment_amount: '0',
+      tax_amount: ext.tax_amount ? String(ext.tax_amount) : '',
+      status: 'draft',
+      notes: ext.vendor_name ? `PDF取込: ${ext.vendor_name}` : 'PDF取込',
+    })
+    setShowImportModal(false)
+    setImportResult(null)
+    setEditing(null)
+    setShowModal(true)
+  }
+
+  useEffect(() => {
+    if (showModal) {
+      api.get('/contracts', { params: { page: 1, per_page: 100 } }).then((res) => setContractOptions(res.data.items)).catch(() => {})
+    }
+  }, [showModal])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.get('/invoices', { params: { page, per_page: 20 } })
+      const params: Record<string, string | number> = { page, per_page: 20 }
+      if (statusFilter) params.status = statusFilter
+      const res = await api.get('/invoices', { params })
       setInvoices(res.data.items)
       setTotal(res.data.total)
       setPages(res.data.pages)
@@ -43,7 +94,7 @@ export default function InvoicesPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, statusFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -74,14 +125,18 @@ export default function InvoicesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const baseAmount = Number(form.base_amount)
+    const adjustmentAmount = Number(form.adjustment_amount)
+    const taxAmount = Number(form.tax_amount)
     const payload = {
       contract_id: Number(form.contract_id),
       invoice_number: form.invoice_number,
-      billing_month: form.billing_month,
+      billing_month: form.billing_month + '-01',
       working_hours: Number(form.working_hours),
-      base_amount: Number(form.base_amount),
-      adjustment_amount: Number(form.adjustment_amount),
-      tax_amount: Number(form.tax_amount),
+      base_amount: baseAmount,
+      adjustment_amount: adjustmentAmount,
+      tax_amount: taxAmount,
+      total_amount: baseAmount + adjustmentAmount + taxAmount,
       status: form.status,
       notes: form.notes || null,
     }
@@ -114,10 +169,28 @@ export default function InvoicesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">請求管理</h2>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          <Plus size={18} /> 新規作成
-        </button>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold">請求管理</h2>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          >
+            <option value="">すべてのステータス</option>
+            <option value="draft">下書き</option>
+            <option value="sent">送付済</option>
+            <option value="paid">入金済</option>
+            <option value="overdue">延滞</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setImportResult(null); setShowImportModal(true) }} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+            <Upload size={18} /> PDFインポート
+          </button>
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <Plus size={18} /> 新規作成
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -185,8 +258,13 @@ export default function InvoicesPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">契約ID *</label>
-                    <input type="number" value={form.contract_id} onChange={(e) => setForm({ ...form, contract_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">契約 *</label>
+                    <select value={form.contract_id} onChange={(e) => setForm({ ...form, contract_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                      <option value="">選択してください</option>
+                      {contractOptions.map((c) => (
+                        <option key={c.id} value={c.id}>{c.contract_number}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">請求番号 *</label>
@@ -235,6 +313,84 @@ export default function InvoicesPage() {
                   <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-bold mb-4">請求書PDFインポート</h3>
+
+              {!importResult ? (
+                <div>
+                  <div
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const f = e.dataTransfer.files[0]
+                      if (f?.name.toLowerCase().endsWith('.pdf')) handleImportPdf(f)
+                      else toast.error('PDFファイルを選択してください')
+                    }}
+                  >
+                    <Upload size={40} className="mx-auto text-gray-400 mb-3" />
+                    {importing ? (
+                      <p className="text-blue-600 font-medium">解析中...</p>
+                    ) : (
+                      <>
+                        <p className="text-gray-600 font-medium">PDFファイルをドラッグ&ドロップ</p>
+                        <p className="text-gray-400 text-sm mt-1">またはクリックして選択</p>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) handleImportPdf(f)
+                    }}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-gray-500 mb-3">ファイル: {importResult.file_name}</p>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                    {Object.entries(importResult.extracted).filter(([k]) => !['raw_text', 'line_items'].includes(k)).map(([k, v]) => (
+                      <div key={k} className="flex justify-between">
+                        <span className="text-gray-500">{k}</span>
+                        <span className="font-medium">{v != null ? String(v) : '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {((importResult.extracted as Record<string, unknown[]>).line_items ?? []).length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-medium text-gray-700 mb-1">明細行</p>
+                      <div className="bg-gray-50 rounded-lg p-3 text-xs max-h-32 overflow-auto">
+                        {((importResult.extracted as Record<string, Record<string, string>[]>).line_items || []).map((item, i) => (
+                          <div key={i} className="flex justify-between py-1 border-b last:border-0">
+                            <span>{item.description}</span>
+                            <span className="font-medium">{item.amount}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-3 pt-4">
+                    <button onClick={() => setImportResult(null)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">やり直す</button>
+                    <button onClick={applyImportResult} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">このデータで作成</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-4">
+                <button onClick={() => setShowImportModal(false)} className="text-sm text-gray-500 hover:text-gray-700">閉じる</button>
+              </div>
             </div>
           </div>
         </div>

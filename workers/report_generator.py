@@ -13,9 +13,11 @@ from app.models import Project, Engineer, Contract, Invoice, ProcessingJob
 class ReportGenerator:
     """各種レポートを生成する"""
 
-    def generate_monthly_summary(self, year: int, month: int) -> bytes:
+    def generate_monthly_summary(self, year: int, month: int, db=None) -> bytes:
         """月次サマリーレポートをExcelで生成"""
-        db = SessionLocal()
+        own_session = db is None
+        if own_session:
+            db = SessionLocal()
         try:
             wb = Workbook()
 
@@ -36,7 +38,8 @@ class ReportGenerator:
             wb.save(output)
             return output.getvalue()
         finally:
-            db.close()
+            if own_session:
+                db.close()
 
     def _write_project_summary(self, ws, db, year: int, month: int):
         header_font = Font(bold=True, size=12)

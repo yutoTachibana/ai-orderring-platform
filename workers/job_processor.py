@@ -38,8 +38,16 @@ def process_order(job_id: int) -> dict:
 
         try:
             parser = ExcelParser()
-            order_data = parser.parse_order_excel(job.excel_file_path)
-            _add_log(db, job_id, "excel_parse", "completed", f"解析完了: {len(order_data)}フィールド抽出")
+            result = parser.smart_parse(job.excel_file_path)
+            if isinstance(result, list):
+                # テーブル形式: 複数レコード → 最初のレコードを使用、全件数を記録
+                order_data = result[0] if result else {}
+                _add_log(db, job_id, "excel_parse", "completed", f"一覧形式: {len(result)}件検出、{len(order_data)}フィールド抽出")
+                job.result = {"all_records": [{k: str(v) for k, v in r.items()} for r in result]}
+                db.commit()
+            else:
+                order_data = result
+                _add_log(db, job_id, "excel_parse", "completed", f"仕様書形式: {len(order_data)}フィールド抽出")
         except ExcelParseError as e:
             job.status = JobStatus.failed
             job.error_message = str(e)

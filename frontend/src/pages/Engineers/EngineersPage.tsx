@@ -16,23 +16,40 @@ const statusBadge: Record<string, string> = {
   unavailable: 'bg-red-100 text-red-800',
 }
 
+const employmentTypeLabels: Record<string, string> = {
+  proper: 'プロパー',
+  first_tier_proper: '一社先プロパー',
+  freelancer: '個人事業主',
+  first_tier_freelancer: '一社先個人事業主',
+}
+
+const employmentTypeBadge: Record<string, string> = {
+  proper: 'bg-indigo-100 text-indigo-800',
+  first_tier_proper: 'bg-purple-100 text-purple-800',
+  freelancer: 'bg-orange-100 text-orange-800',
+  first_tier_freelancer: 'bg-amber-100 text-amber-800',
+}
+
 export default function EngineersPage() {
   const [engineers, setEngineers] = useState<Engineer[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Engineer | null>(null)
   const [form, setForm] = useState({
-    full_name: '', email: '', phone: '', hourly_rate: '', monthly_rate: '',
+    full_name: '', email: '', phone: '', employment_type: 'proper', hourly_rate: '', monthly_rate: '',
     availability_status: 'available', years_of_experience: '', notes: '',
   })
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await engineersApi.list({ page, per_page: 20 })
+      const params: Record<string, string | number> = { page, per_page: 20 }
+      if (statusFilter) params.availability_status = statusFilter
+      const res = await engineersApi.list(params)
       setEngineers(res.data.items)
       setTotal(res.data.total)
       setPages(res.data.pages)
@@ -41,13 +58,13 @@ export default function EngineersPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, statusFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ full_name: '', email: '', phone: '', hourly_rate: '', monthly_rate: '', availability_status: 'available', years_of_experience: '', notes: '' })
+    setForm({ full_name: '', email: '', phone: '', employment_type: 'proper', hourly_rate: '', monthly_rate: '', availability_status: 'available', years_of_experience: '', notes: '' })
     setShowModal(true)
   }
 
@@ -57,6 +74,7 @@ export default function EngineersPage() {
       full_name: eng.full_name,
       email: eng.email,
       phone: eng.phone || '',
+      employment_type: eng.employment_type || 'proper',
       hourly_rate: eng.hourly_rate?.toString() || '',
       monthly_rate: eng.monthly_rate?.toString() || '',
       availability_status: eng.availability_status,
@@ -72,6 +90,7 @@ export default function EngineersPage() {
       full_name: form.full_name,
       email: form.email,
       phone: form.phone || null,
+      employment_type: form.employment_type,
       hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
       monthly_rate: form.monthly_rate ? Number(form.monthly_rate) : null,
       availability_status: form.availability_status,
@@ -107,7 +126,19 @@ export default function EngineersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">エンジニア管理</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold">エンジニア管理</h2>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          >
+            <option value="">すべてのステータス</option>
+            <option value="available">稼働可能</option>
+            <option value="assigned">アサイン済</option>
+            <option value="unavailable">稼働不可</option>
+          </select>
+        </div>
         <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           <Plus size={18} /> 新規作成
         </button>
@@ -121,6 +152,7 @@ export default function EngineersPage() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">氏名</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">メール</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">所属企業</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">雇用形態</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">月単価</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">経験年数</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">スキル</th>
@@ -130,15 +162,20 @@ export default function EngineersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="text-center py-8 text-gray-500">読み込み中...</td></tr>
+              <tr><td colSpan={10} className="text-center py-8 text-gray-500">読み込み中...</td></tr>
             ) : engineers.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-gray-500">データがありません</td></tr>
+              <tr><td colSpan={10} className="text-center py-8 text-gray-500">データがありません</td></tr>
             ) : engineers.map((eng) => (
               <tr key={eng.id} className="border-b hover:bg-gray-50">
                 <td className="px-4 py-3">{eng.id}</td>
                 <td className="px-4 py-3 font-medium">{eng.full_name}</td>
                 <td className="px-4 py-3 text-gray-500">{eng.email}</td>
                 <td className="px-4 py-3 text-gray-500">{eng.company?.name || '-'}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${employmentTypeBadge[eng.employment_type] || 'bg-gray-100 text-gray-800'}`}>
+                    {employmentTypeLabels[eng.employment_type] || eng.employment_type}
+                  </span>
+                </td>
                 <td className="px-4 py-3">{eng.monthly_rate ? `${eng.monthly_rate.toLocaleString()}円` : '-'}</td>
                 <td className="px-4 py-3">{eng.years_of_experience != null ? `${eng.years_of_experience}年` : '-'}</td>
                 <td className="px-4 py-3">
@@ -192,6 +229,15 @@ export default function EngineersPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
                   <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">雇用形態</label>
+                  <select value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="proper">プロパー（自社正社員）</option>
+                    <option value="first_tier_proper">一社先プロパー</option>
+                    <option value="freelancer">個人事業主（フリーランス）</option>
+                    <option value="first_tier_freelancer">一社先個人事業主</option>
+                  </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

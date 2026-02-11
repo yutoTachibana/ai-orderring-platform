@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.contract import Contract, ContractStatus, ContractType
 from app.schemas.contract import ContractCreate, ContractUpdate, ContractResponse
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_roles
 
 router = APIRouter()
 
@@ -20,15 +20,19 @@ def list_contracts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Contract)
+    base_query = db.query(Contract)
     if status:
-        query = query.filter(Contract.status == status)
+        base_query = base_query.filter(Contract.status == status)
     if engineer_id is not None:
-        query = query.filter(Contract.engineer_id == engineer_id)
+        base_query = base_query.filter(Contract.engineer_id == engineer_id)
     if project_id is not None:
-        query = query.filter(Contract.project_id == project_id)
-    total = query.count()
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
+        base_query = base_query.filter(Contract.project_id == project_id)
+    total = base_query.count()
+    items = base_query.options(
+        joinedload(Contract.engineer),
+        joinedload(Contract.project),
+        joinedload(Contract.order),
+    ).offset((page - 1) * per_page).limit(per_page).all()
     return {
         "items": items,
         "total": total,
@@ -85,7 +89,7 @@ def update_contract(
 def delete_contract(
     contract_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.admin)),
 ):
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if not contract:

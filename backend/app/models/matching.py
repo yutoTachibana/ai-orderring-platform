@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -14,6 +14,7 @@ class MatchingResult(Base):
     skill_match_rate: Mapped[float] = mapped_column(Float, nullable=False)
     rate_match: Mapped[bool] = mapped_column(Boolean, nullable=False)
     availability_match: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    tier_eligible: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at = mapped_column(DateTime, default=func.now())
 

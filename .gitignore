@@ -35,6 +35,11 @@ htmlcov/
 # Build
 frontend/dist/
 
+# Uploads
+uploads/
+*.xlsx
+*.pdf
+
 # Agent team
 agent_workspaces/
 agent_logs/

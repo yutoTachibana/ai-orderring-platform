@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
-import { Order } from '../../types'
+import { Order, Quotation } from '../../types'
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -22,16 +22,26 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Order | null>(null)
   const [form, setForm] = useState({
     quotation_id: '', order_number: '', status: 'pending', notes: '',
   })
+  const [quotationOptions, setQuotationOptions] = useState<Quotation[]>([])
+
+  useEffect(() => {
+    if (showModal) {
+      api.get('/quotations', { params: { page: 1, per_page: 100 } }).then((res) => setQuotationOptions(res.data.items)).catch(() => {})
+    }
+  }, [showModal])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.get('/orders', { params: { page, per_page: 20 } })
+      const params: Record<string, string | number> = { page, per_page: 20 }
+      if (statusFilter) params.status = statusFilter
+      const res = await api.get('/orders', { params })
       setOrders(res.data.items)
       setTotal(res.data.total)
       setPages(res.data.pages)
@@ -40,7 +50,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, statusFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -98,7 +108,19 @@ export default function OrdersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">発注管理</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold">発注管理</h2>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          >
+            <option value="">すべてのステータス</option>
+            <option value="pending">未確認</option>
+            <option value="confirmed">確認済</option>
+            <option value="cancelled">キャンセル</option>
+          </select>
+        </div>
         <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           <Plus size={18} /> 新規作成
         </button>
@@ -164,8 +186,13 @@ export default function OrdersPage() {
               <h3 className="text-lg font-bold mb-4">{editing ? '発注を編集' : '発注を新規作成'}</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">見積ID *</label>
-                  <input type="number" value={form.quotation_id} onChange={(e) => setForm({ ...form, quotation_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">見積 *</label>
+                  <select value={form.quotation_id} onChange={(e) => setForm({ ...form, quotation_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="">選択してください</option>
+                    {quotationOptions.map((q) => (
+                      <option key={q.id} value={q.id}>{q.project?.name || `案件#${q.project_id}`} - {q.total_amount.toLocaleString()}円</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">発注番号 *</label>

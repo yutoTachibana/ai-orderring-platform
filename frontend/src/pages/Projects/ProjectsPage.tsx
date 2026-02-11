@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
+import api from '../../services/api'
 import { projectsApi } from '../../services/projects'
-import { Project } from '../../types'
+import { Project, Company } from '../../types'
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -20,23 +21,47 @@ const statusBadge: Record<string, string> = {
   closed: 'bg-red-100 text-red-800',
 }
 
+const tierLimitLabels: Record<string, string> = {
+  proper_only: 'プロパーのみ',
+  first_tier: '一社先まで',
+  second_tier: '二社先まで',
+  no_restriction: '制限なし',
+}
+
+const tierLimitBadge: Record<string, string> = {
+  proper_only: 'bg-red-100 text-red-800',
+  first_tier: 'bg-yellow-100 text-yellow-800',
+  second_tier: 'bg-orange-100 text-orange-800',
+  no_restriction: 'bg-green-100 text-green-800',
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Project | null>(null)
   const [form, setForm] = useState({
-    name: '', description: '', status: 'draft', start_date: '', end_date: '',
-    budget: '', required_headcount: '', notes: '',
+    name: '', description: '', client_company_id: '', status: 'draft', subcontracting_tier_limit: '',
+    start_date: '', end_date: '', budget: '', required_headcount: '', notes: '',
   })
+  const [companyOptions, setCompanyOptions] = useState<Company[]>([])
+
+  useEffect(() => {
+    if (showModal) {
+      api.get('/companies', { params: { page: 1, per_page: 100 } }).then((res) => setCompanyOptions(res.data.items)).catch(() => {})
+    }
+  }, [showModal])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await projectsApi.list({ page, per_page: 20 })
+      const params: Record<string, string | number> = { page, per_page: 20 }
+      if (statusFilter) params.status = statusFilter
+      const res = await projectsApi.list(params)
       setProjects(res.data.items)
       setTotal(res.data.total)
       setPages(res.data.pages)
@@ -45,13 +70,13 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, statusFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ name: '', description: '', status: 'draft', start_date: '', end_date: '', budget: '', required_headcount: '', notes: '' })
+    setForm({ name: '', description: '', client_company_id: '', status: 'draft', subcontracting_tier_limit: '', start_date: '', end_date: '', budget: '', required_headcount: '', notes: '' })
     setShowModal(true)
   }
 
@@ -60,7 +85,9 @@ export default function ProjectsPage() {
     setForm({
       name: p.name,
       description: p.description || '',
+      client_company_id: p.client_company_id?.toString() || '',
       status: p.status,
+      subcontracting_tier_limit: p.subcontracting_tier_limit || '',
       start_date: p.start_date || '',
       end_date: p.end_date || '',
       budget: p.budget?.toString() || '',
@@ -75,7 +102,9 @@ export default function ProjectsPage() {
     const payload = {
       name: form.name,
       description: form.description || null,
+      client_company_id: form.client_company_id ? Number(form.client_company_id) : null,
       status: form.status,
+      subcontracting_tier_limit: form.subcontracting_tier_limit || null,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       budget: form.budget ? Number(form.budget) : null,
@@ -111,7 +140,21 @@ export default function ProjectsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">案件管理</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold">案件管理</h2>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          >
+            <option value="">すべてのステータス</option>
+            <option value="draft">下書き</option>
+            <option value="open">募集中</option>
+            <option value="in_progress">進行中</option>
+            <option value="completed">完了</option>
+            <option value="closed">クローズ</option>
+          </select>
+        </div>
         <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           <Plus size={18} /> 新規作成
         </button>
@@ -125,6 +168,7 @@ export default function ProjectsPage() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">案件名</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">クライアント</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">ステータス</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">再委託制限</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">予算</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">必要人数</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">期間</th>
@@ -133,9 +177,9 @@ export default function ProjectsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gray-500">読み込み中...</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gray-500">読み込み中...</td></tr>
             ) : projects.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gray-500">データがありません</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gray-500">データがありません</td></tr>
             ) : projects.map((p) => (
               <tr key={p.id} className="border-b hover:bg-gray-50">
                 <td className="px-4 py-3">{p.id}</td>
@@ -145,6 +189,13 @@ export default function ProjectsPage() {
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge[p.status] || 'bg-gray-100 text-gray-800'}`}>
                     {statusLabels[p.status] || p.status}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  {p.subcontracting_tier_limit ? (
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierLimitBadge[p.subcontracting_tier_limit] || 'bg-gray-100 text-gray-800'}`}>
+                      {tierLimitLabels[p.subcontracting_tier_limit] || p.subcontracting_tier_limit}
+                    </span>
+                  ) : <span className="text-gray-400">-</span>}
                 </td>
                 <td className="px-4 py-3">{p.budget ? `${p.budget.toLocaleString()}円` : '-'}</td>
                 <td className="px-4 py-3">{p.required_headcount != null ? `${p.required_headcount}名` : '-'}</td>
@@ -187,6 +238,15 @@ export default function ProjectsPage() {
                   <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">クライアント企業</label>
+                  <select value={form.client_company_id} onChange={(e) => setForm({ ...form, client_company_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="">選択してください</option>
+                    {companyOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">ステータス</label>
                   <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
                     <option value="draft">下書き</option>
@@ -194,6 +254,16 @@ export default function ProjectsPage() {
                     <option value="in_progress">進行中</option>
                     <option value="completed">完了</option>
                     <option value="closed">クローズ</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">再委託制限</label>
+                  <select value={form.subcontracting_tier_limit} onChange={(e) => setForm({ ...form, subcontracting_tier_limit: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="">制限なし</option>
+                    <option value="proper_only">プロパーのみ</option>
+                    <option value="first_tier">一社先まで</option>
+                    <option value="second_tier">二社先まで</option>
+                    <option value="no_restriction">制限なし（明示）</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

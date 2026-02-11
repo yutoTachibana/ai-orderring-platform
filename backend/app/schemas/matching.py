@@ -10,6 +10,7 @@ class MatchingResultResponse(BaseModel):
     skill_match_rate: float
     rate_match: bool
     availability_match: bool
+    tier_eligible: bool = True
     notes: str | None = None
     created_at: datetime
 

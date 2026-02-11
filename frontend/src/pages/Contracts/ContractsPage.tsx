@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
-import { Contract } from '../../types'
+import { Contract, Order, Engineer, Project } from '../../types'
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -30,6 +30,7 @@ export default function ContractsPage() {
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Contract | null>(null)
   const [form, setForm] = useState({
@@ -37,11 +38,24 @@ export default function ContractsPage() {
     engineer_id: '', project_id: '', start_date: '', end_date: '',
     monthly_rate: '', min_hours: '', max_hours: '', status: 'draft', notes: '',
   })
+  const [orderOptions, setOrderOptions] = useState<Order[]>([])
+  const [engineerOptions, setEngineerOptions] = useState<Engineer[]>([])
+  const [projectOptions, setProjectOptions] = useState<Project[]>([])
+
+  useEffect(() => {
+    if (showModal) {
+      api.get('/orders', { params: { page: 1, per_page: 100 } }).then((res) => setOrderOptions(res.data.items)).catch(() => {})
+      api.get('/engineers', { params: { page: 1, per_page: 100 } }).then((res) => setEngineerOptions(res.data.items)).catch(() => {})
+      api.get('/projects', { params: { page: 1, per_page: 100 } }).then((res) => setProjectOptions(res.data.items)).catch(() => {})
+    }
+  }, [showModal])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.get('/contracts', { params: { page, per_page: 20 } })
+      const params: Record<string, string | number> = { page, per_page: 20 }
+      if (statusFilter) params.status = statusFilter
+      const res = await api.get('/contracts', { params })
       setContracts(res.data.items)
       setTotal(res.data.total)
       setPages(res.data.pages)
@@ -50,7 +64,7 @@ export default function ContractsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, statusFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -128,7 +142,20 @@ export default function ContractsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">契約管理</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold">契約管理</h2>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          >
+            <option value="">すべてのステータス</option>
+            <option value="draft">下書き</option>
+            <option value="active">有効</option>
+            <option value="expired">期限切れ</option>
+            <option value="terminated">解約済</option>
+          </select>
+        </div>
         <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           <Plus size={18} /> 新規作成
         </button>
@@ -201,8 +228,13 @@ export default function ContractsPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">発注ID *</label>
-                    <input type="number" value={form.order_id} onChange={(e) => setForm({ ...form, order_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">発注 *</label>
+                    <select value={form.order_id} onChange={(e) => setForm({ ...form, order_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                      <option value="">選択してください</option>
+                      {orderOptions.map((o) => (
+                        <option key={o.id} value={o.id}>{o.order_number}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">契約番号 *</label>
@@ -219,12 +251,22 @@ export default function ContractsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">エンジニアID *</label>
-                    <input type="number" value={form.engineer_id} onChange={(e) => setForm({ ...form, engineer_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">エンジニア *</label>
+                    <select value={form.engineer_id} onChange={(e) => setForm({ ...form, engineer_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                      <option value="">選択してください</option>
+                      {engineerOptions.map((eng) => (
+                        <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">案件ID *</label>
-                    <input type="number" value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">案件 *</label>
+                    <select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                      <option value="">選択してください</option>
+                      {projectOptions.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

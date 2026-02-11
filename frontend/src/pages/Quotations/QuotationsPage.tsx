@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
-import { Quotation } from '../../types'
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { engineersApi } from '../../services/engineers'
+import { Quotation, Project, Engineer } from '../../types'
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const tierLimitLabels: Record<string, string> = {
+  proper_only: 'プロパーのみ',
+  first_tier: '一社先まで',
+  second_tier: '二社先まで',
+  no_restriction: '制限なし',
+}
 
 const statusLabels: Record<string, string> = {
   draft: '下書き',
@@ -29,6 +37,33 @@ export default function QuotationsPage() {
   const [form, setForm] = useState({
     project_id: '', engineer_id: '', unit_price: '', estimated_hours: '', status: 'draft', notes: '',
   })
+  const [projectOptions, setProjectOptions] = useState<Project[]>([])
+  const [engineerOptions, setEngineerOptions] = useState<Engineer[]>([])
+
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+
+  useEffect(() => {
+    if (showModal) {
+      api.get('/projects', { params: { page: 1, per_page: 100 } }).then((res) => setProjectOptions(res.data.items)).catch(() => {})
+    }
+  }, [showModal])
+
+  // 案件選択時に適格エンジニアを取得
+  useEffect(() => {
+    if (!form.project_id) {
+      setEngineerOptions([])
+      setSelectedProject(null)
+      return
+    }
+    const project = projectOptions.find((p) => p.id === Number(form.project_id))
+    setSelectedProject(project || null)
+    engineersApi.listEligible(Number(form.project_id))
+      .then((res) => setEngineerOptions(res.data.items))
+      .catch(() => {
+        // フォールバック: eligible API が失敗した場合は全エンジニアを取得
+        api.get('/engineers', { params: { page: 1, per_page: 100 } }).then((res) => setEngineerOptions(res.data.items)).catch(() => {})
+      })
+  }, [form.project_id, projectOptions])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -171,14 +206,30 @@ export default function QuotationsPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">案件ID *</label>
-                    <input type="number" value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">案件 *</label>
+                    <select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value, engineer_id: '' })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                      <option value="">選択してください</option>
+                      {projectOptions.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">エンジニアID *</label>
-                    <input type="number" value={form.engineer_id} onChange={(e) => setForm({ ...form, engineer_id: e.target.value })} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">エンジニア *</label>
+                    <select value={form.engineer_id} onChange={(e) => setForm({ ...form, engineer_id: e.target.value })} required disabled={!form.project_id} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed">
+                      <option value="">{form.project_id ? '選択してください' : '先に案件を選択してください'}</option>
+                      {engineerOptions.map((eng) => (
+                        <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
+                {selectedProject?.subcontracting_tier_limit && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                    <AlertTriangle size={16} />
+                    <span>この案件の再委託制限: <strong>{tierLimitLabels[selectedProject.subcontracting_tier_limit] || selectedProject.subcontracting_tier_limit}</strong>（適格なエンジニアのみ表示されています）</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">単価 (円) *</label>

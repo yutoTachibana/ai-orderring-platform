@@ -9,6 +9,7 @@ class ProjectBase(BaseModel):
     description: str | None = None
     client_company_id: int | None = None
     status: str = "draft"
+    subcontracting_tier_limit: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     budget: int | None = None
@@ -25,6 +26,7 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     client_company_id: int | None = None
     status: str | None = None
+    subcontracting_tier_limit: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     budget: int | None = None

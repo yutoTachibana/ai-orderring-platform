@@ -29,6 +29,8 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/orderring
       REDIS_URL: redis://redis:6379/0
@@ -36,12 +38,15 @@ services:
       DEBUG: "true"
     volumes:
       - ./backend:/app
+      - ./workers:/app/workers
+      - ./mcp_servers:/app/mcp_servers
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      bash -c "python -c 'from app.database import engine, Base; from app.models import *; Base.metadata.create_all(bind=engine)' && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build: ./frontend
@@ -62,12 +67,29 @@ services:
       SECRET_KEY: dev-secret-key-change-in-production
     volumes:
       - ./backend:/app
+      - ./workers:/app/workers
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.celery_app worker --loglevel=info
+    command: python -m celery -A app.celery_app worker --loglevel=info
+
+  beat:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/orderring
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-key-change-in-production
+    volumes:
+      - ./backend:/app
+      - ./workers:/app/workers
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m celery -A app.celery_app beat --loglevel=info
 
 volumes:
   postgres_data:

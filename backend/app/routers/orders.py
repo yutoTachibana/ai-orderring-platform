@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.order import Order, OrderStatus
+from app.models.quotation import Quotation
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_roles
 
 router = APIRouter()
 
@@ -20,11 +21,13 @@ def list_orders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Order)
+    base_query = db.query(Order)
     if status:
-        query = query.filter(Order.status == status)
-    total = query.count()
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
+        base_query = base_query.filter(Order.status == status)
+    total = base_query.count()
+    items = base_query.options(
+        joinedload(Order.quotation).joinedload(Quotation.project),
+    ).offset((page - 1) * per_page).limit(per_page).all()
     return {
         "items": items,
         "total": total,
@@ -81,7 +84,7 @@ def update_order(
 def delete_order(
     order_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.admin)),
 ):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:

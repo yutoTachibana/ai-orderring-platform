@@ -1,15 +1,18 @@
+import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.invoice import Invoice, InvoiceStatus
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceResponse
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_roles
 
 router = APIRouter()
+
+UPLOAD_DIR = "/app/uploads/invoices"
 
 
 @router.get("", summary="請求一覧")
@@ -21,13 +24,15 @@ def list_invoices(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Invoice)
+    base_query = db.query(Invoice)
     if status:
-        query = query.filter(Invoice.status == status)
+        base_query = base_query.filter(Invoice.status == status)
     if contract_id is not None:
-        query = query.filter(Invoice.contract_id == contract_id)
-    total = query.count()
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
+        base_query = base_query.filter(Invoice.contract_id == contract_id)
+    total = base_query.count()
+    items = base_query.options(
+        joinedload(Invoice.contract),
+    ).offset((page - 1) * per_page).limit(per_page).all()
     return {
         "items": items,
         "total": total,
@@ -84,7 +89,7 @@ def update_invoice(
 def delete_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(UserRole.admin)),
 ):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
@@ -109,6 +114,35 @@ def send_invoice(
     db.commit()
     db.refresh(invoice)
     return invoice
+
+
+@router.post("/import", summary="請求書PDFインポート")
+def import_invoice_pdf(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """PDFファイルをアップロードして請求データを抽出する。"""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="PDFファイルのみ対応しています")
+
+    from app.services.invoice_pdf import extract_invoice_from_pdf
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}")
+    with open(file_path, "wb") as f:
+        f.write(file.file.read())
+
+    try:
+        extracted = extract_invoice_from_pdf(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"PDF解析エラー: {str(e)}")
+
+    return {
+        "file_name": file.filename,
+        "file_path": file_path,
+        "extracted": extracted,
+    }
 
 
 @router.post("/{invoice_id}/pay", response_model=InvoiceResponse, summary="請求支払い")

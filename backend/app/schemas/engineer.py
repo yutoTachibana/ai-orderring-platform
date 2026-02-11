@@ -9,6 +9,7 @@ class EngineerBase(BaseModel):
     email: str
     phone: str | None = None
     company_id: int | None = None
+    employment_type: str = "proper"
     hourly_rate: int | None = None
     monthly_rate: int | None = None
     availability_status: str = "available"
@@ -26,6 +27,7 @@ class EngineerUpdate(BaseModel):
     email: str | None = None
     phone: str | None = None
     company_id: int | None = None
+    employment_type: str | None = None
     hourly_rate: int | None = None
     monthly_rate: int | None = None
     availability_status: str | None = None
@@ -37,6 +39,8 @@ class EngineerUpdate(BaseModel):
 
 class EngineerResponse(EngineerBase):
     id: int
+    employment_type: str
+    subcontracting_tier: int
     company: CompanyResponse | None = None
     skills: list[SkillTagResponse] = []
     created_at: datetime
